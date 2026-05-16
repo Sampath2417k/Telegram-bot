@@ -240,13 +240,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ... add all your other button cases (convert, resize, etc.) from your original code
 
 # ---------- Main ----------
+
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).concurrent_updates(True).drop_pending_updates(True).build()
+    app = ApplicationBuilder().token(TOKEN).build()
+    # Add all handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.PHOTO, handle_image))
-    app.add_handler(MessageHandler(filters.VIDEO, handle_video))   # Only one video handler
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    print("✅ Bot running with Pinterest short link support!")
+    
+    # Run polling without invalid arguments
+    print("🚀 Bot is running...")
     app.run_polling()
