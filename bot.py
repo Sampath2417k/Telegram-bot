@@ -51,6 +51,8 @@ def build_resize_menu():
          InlineKeyboardButton("Thumb 256×256", callback_data="do_resize_256_256")],
         [InlineKeyboardButton("Square 1080×1080", callback_data="do_resize_1080_1080"),
          InlineKeyboardButton("4K 3840×2160",     callback_data="do_resize_3840_2160")],
+        [InlineKeyboardButton("✏️ Custom Width×Height", callback_data="do_resize_custom")],
+        [InlineKeyboardButton("✏️ Custom Aspect Ratio", callback_data="do_ratio_custom")],
         [InlineKeyboardButton("⬅️ Back", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -104,9 +106,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Please send an image file.")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    # Custom KB compression
     if context.user_data.get("waiting_custom_kb"):
         try:
-            kb = int(update.message.text.strip())
+            kb = int(text)
             assert 1 <= kb <= 50000
         except:
             await update.message.reply_text("❌ Enter a valid number (1–50000 KB)")
@@ -116,7 +121,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not file_id:
             await update.message.reply_text("❌ Image expired. Send it again.")
             return
-        msg = await update.message.reply_text(f"⏳ Compressing to {kb} KB...")
+        await update.message.reply_text(f"⏳ Compressing to {kb} KB...")
         img = await get_image(context, file_id)
         buf = compress_to_kb(img, kb)
         actual = buf.seek(0, 2) // 1024; buf.seek(0)
@@ -124,6 +129,78 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update.message.chat_id, buf,
             filename=f"compressed_{kb}kb.jpg",
             caption=f"✅ Done! (~{actual} KB)"
+        )
+        await send_menu(update.message.chat_id, context)
+
+    # Custom width x height
+    elif context.user_data.get("waiting_custom_size"):
+        try:
+            # Accept formats: 800x600 or 800 600 or 800,600
+            parts = text.lower().replace("x", " ").replace(",", " ").split()
+            w, h = int(parts[0]), int(parts[1])
+            assert 1 <= w <= 10000 and 1 <= h <= 10000
+        except:
+            await update.message.reply_text("❌ Invalid format. Try: 800x600 or 800 600")
+            return
+        context.user_data["waiting_custom_size"] = False
+        file_id = context.user_data.get("file_id")
+        if not file_id:
+            await update.message.reply_text("❌ Image expired. Send it again.")
+            return
+        await update.message.reply_text(f"⏳ Resizing to {w}×{h}...")
+        img = await get_image(context, file_id)
+        img = img.resize((w, h), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        await context.bot.send_document(
+            update.message.chat_id, buf,
+            filename=f"resized_{w}x{h}.png",
+            caption=f"✅ Resized to {w}×{h}!"
+        )
+        await send_menu(update.message.chat_id, context)
+
+    # Custom aspect ratio
+    elif context.user_data.get("waiting_custom_ratio"):
+        try:
+            # Accept formats: 16:9 or 16 9 or 4:3
+            parts = text.replace(":", " ").split()
+            rw, rh = int(parts[0]), int(parts[1])
+            assert rw > 0 and rh > 0
+        except:
+            await update.message.reply_text("❌ Invalid format. Try: 16:9 or 4:3")
+            return
+        context.user_data["waiting_custom_ratio"] = False
+        file_id = context.user_data.get("file_id")
+        if not file_id:
+            await update.message.reply_text("❌ Image expired. Send it again.")
+            return
+        await update.message.reply_text(f"⏳ Cropping to {rw}:{rh} ratio...")
+        img = await get_image(context, file_id)
+        orig_w, orig_h = img.size
+
+        # Calculate crop box to match ratio
+        target_ratio = rw / rh
+        orig_ratio = orig_w / orig_h
+
+        if orig_ratio > target_ratio:
+            # Crop width
+            new_w = int(orig_h * target_ratio)
+            left = (orig_w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, orig_h))
+        else:
+            # Crop height
+            new_h = int(orig_w / target_ratio)
+            top = (orig_h - new_h) // 2
+            img = img.crop((0, top, orig_w, top + new_h))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        await context.bot.send_document(
+            update.message.chat_id, buf,
+            filename=f"ratio_{rw}x{rh}.png",
+            caption=f"✅ Cropped to {rw}:{rh} ratio!\nNew size: {img.size[0]}×{img.size[1]}"
         )
         await send_menu(update.message.chat_id, context)
 
@@ -227,7 +304,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             "📑 *PDF → JPG*\n\nSend the PDF file as a *document* and I'll convert it.\n_(Coming soon — send image for now)_",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="menu_main")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="menu_main")]])elif d == "do_resize_custom":
+        context.user_data["waiting_custom_size"] = True
+        context.user_data["waiting_custom_ratio"] = False
+        context.user_data["waiting_custom_kb"] = False
+        await q.edit_message_text(
+            "✏️ *Enter custom size:*\n\nFormats accepted:\n`800x600`\n`1920 1080`\n`800,600`",
+            parse_mode="Markdown"
+        )
+
+    elif d == "do_ratio_custom":
+        context.user_data["waiting_custom_ratio"] = True
+        context.user_data["waiting_custom_size"] = False
+        context.user_data["waiting_custom_kb"] = False
+        await q.edit_message_text(
+            "✏️ *Enter aspect ratio:*\n\nFormats accepted:\n`16:9`\n`4:3`\n`1:1`\n`9:16`",
+            parse_mode="Markdown"
+        )
         )
 
 # ── main ─────────────────────────────────────────────────────────────────────
