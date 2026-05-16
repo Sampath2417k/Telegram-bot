@@ -7,7 +7,9 @@ import io
 TOKEN = os.environ.get("TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Send me an image and I'll convert it!\n/topng /tojpg /towebp")
+    await update.message.reply_text(
+        "Send me an image!\nCommands:\n/topng\n/tojpg\n/towebp"
+    )
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['file_id'] = update.message.photo[-1].file_id
@@ -52,12 +54,12 @@ async def to_webp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     output.seek(0)
     await update.message.reply_document(output, filename="converted.webp")
 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("topng", to_png))
-app.add_handler(CommandHandler("tojpg", to_jpg))
-app.add_handler(CommandHandler("towebp", to_webp))
-app.add_handler(MessageHandler(filters.PHOTO, handle_image))
-
-print("Bot running...")
-app.run_polling()
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("topng", to_png))
+    app.add_handler(CommandHandler("tojpg", to_jpg))
+    app.add_handler(CommandHandler("towebp", to_webp))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_image))
+    print("Bot running...")
+    app.run_polling()
