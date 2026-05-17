@@ -2,6 +2,7 @@ import os
 import io
 import re
 import zipfile
+import requests
 from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,6 +15,11 @@ from telegram.ext import (
     ContextTypes,
 )
 from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageFont
+
+# ---------- FIX for Pillow >= 10.0.0 (moviepy compatibility) ----------
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.LANCZOS
+
 import img2pdf
 import yt_dlp
 from moviepy.editor import VideoFileClip
@@ -80,6 +86,7 @@ def is_social_media_link(text: str) -> bool:
     return any(re.search(p, text) for p in patterns)
 
 async def download_media(url: str, output_path: str = "downloads/%(title)s.%(ext)s") -> dict:
+    """Try yt-dlp first; if it fails (403), fallback to direct extraction for Pinterest."""
     ydl_opts = {
         "outtmpl": output_path,
         "quiet": True,
@@ -91,10 +98,55 @@ async def download_media(url: str, output_path: str = "downloads/%(title)s.%(ext
             "Accept-Language": "en-US,en;q=0.5",
         },
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        file_path = ydl.prepare_filename(info)
-        return {"path": file_path, "title": info.get("title", "media"), "filesize": info.get("filesize", 0)}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info)
+            return {"path": file_path, "title": info.get("title", "media"), "filesize": info.get("filesize", 0)}
+    except Exception as e:
+        # Fallback for Pinterest only
+        if "pinterest" in url.lower():
+            return await direct_pinterest_download(url, output_path)
+        raise e
+
+async def direct_pinterest_download(url: str, output_path: str) -> dict:
+    """Extract video/image URL from Pinterest HTML using requests + regex."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    resp = requests.get(url, headers=headers, timeout=15)
+    if resp.status_code != 200:
+        raise Exception("Cannot fetch pin page")
+    html = resp.text
+
+    # Try video URL first
+    video_pattern = r'"videoUrl":"(https:[^"]+)"'
+    match = re.search(video_pattern, html)
+    if match:
+        video_url = match.group(1).replace("\\/", "/")
+        vid_resp = requests.get(video_url, headers=headers, stream=True, timeout=30)
+        if vid_resp.status_code == 200:
+            file_path = output_path.replace("%(title)s.%(ext)s", "pinterest_video.mp4")
+            with open(file_path, "wb") as f:
+                for chunk in vid_resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return {"path": file_path, "title": "Pinterest Video", "filesize": os.path.getsize(file_path)}
+
+    # Fallback to image
+    img_pattern = r'"imageUrl":"(https:[^"]+)"'
+    match = re.search(img_pattern, html)
+    if match:
+        img_url = match.group(1).replace("\\/", "/")
+        img_resp = requests.get(img_url, headers=headers, stream=True, timeout=30)
+        if img_resp.status_code == 200:
+            file_path = output_path.replace("%(title)s.%(ext)s", "pinterest_image.jpg")
+            with open(file_path, "wb") as f:
+                for chunk in img_resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return {"path": file_path, "title": "Pinterest Image", "filesize": os.path.getsize(file_path)}
+
+    raise Exception("Could not extract media URL from pin page")
 
 async def video_to_gif(video_path: str, output_path: str, fps: int = 10, duration: int = 8) -> str:
     clip = VideoFileClip(video_path)
@@ -302,12 +354,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"⚠️ File too large ({result['filesize']//(1024*1024)}MB).")
                 return
             with open(result["path"], "rb") as f:
-                await update.message.reply_video(video=f, caption=f"✅ {result['title']}")
+                # Try to send as video, fallback to document
+                try:
+                    await update.message.reply_video(video=f, caption=f"✅ {result['title']}")
+                except:
+                    await update.message.reply_document(document=f, caption=f"✅ {result['title']}")
             os.remove(result["path"])
         except Exception as e:
             error_msg = str(e)
-            if "403" in error_msg:
-                await update.message.reply_text("❌ Download blocked by the website. Try downloading manually and send the file.")
+            if "403" in error_msg or "blocked" in error_msg.lower():
+                await update.message.reply_text(
+                    "❌ Pinterest is blocking automated downloads.\n"
+                    "Please download the media manually and send it to me.\n"
+                    "Then I can convert, resize, or compress it for you!"
+                )
             else:
                 await update.message.reply_text(f"❌ Download failed.\nError: {error_msg[:200]}")
         return
@@ -748,5 +808,5 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    print("✅ Bot started successfully!")
+    print("✅ Bot started successfully with video→GIF and Pinterest fallback!")
     app.run_polling()
