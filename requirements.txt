@@ -27,4 +27,4 @@ pytesseract==0.3.13
 # ── Background removal ────────────────────────────────────
 # WARNING: rembg downloads a ~170 MB AI model on first run.
 # Railway free tier may time out. Comment out if not needed.
-rembg==2.0.75
+# rembg==2.0.75
