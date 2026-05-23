@@ -37,20 +37,21 @@ except ImportError:
 #  STATES
 # ═══════════════════════════════════════════════════════════
 class S:
-    COMPRESS_KB    = "compress_kb"
-    INCREASE_KB    = "increase_kb"
-    CUSTOM_SIZE    = "custom_size"
-    CUSTOM_RATIO   = "custom_ratio"
-    PERCENT        = "percent"
-    IMG_WM         = "img_wm"
-    VIDEO_GIF      = "video_gif"
-    PDF_MERGE      = "pdf_merge"
-    PDF_ENCRYPT    = "pdf_encrypt"
-    PDF_WM         = "pdf_wm"
-    QR_TEXT        = "qr_text"
-    COLLAGE        = "collage_mode"
-    BATCH_SIZE     = "batch_size"
-    BATCH_KB       = "batch_kb"
+    COMPRESS_KB     = "compress_kb"
+    INCREASE_KB     = "increase_kb"
+    CUSTOM_SIZE     = "custom_size"
+    CUSTOM_RATIO    = "custom_ratio"
+    PERCENT         = "percent"
+    IMG_WM          = "img_wm"
+    VIDEO_GIF       = "video_gif"
+    PDF_MERGE       = "pdf_merge"
+    PDF_ENCRYPT     = "pdf_encrypt"
+    PDF_WM          = "pdf_wm"
+    PDF_COMPRESS_KB = "pdf_compress_kb"
+    QR_TEXT         = "qr_text"
+    COLLAGE         = "collage_mode"
+    BATCH_SIZE      = "batch_size"
+    BATCH_KB        = "batch_kb"
 
 def state(ctx): return ctx.user_data.get("st")
 def set_state(ctx, s): ctx.user_data["st"] = s
@@ -214,6 +215,43 @@ def pdf_info(raw):
             f"Title: {m.get('/Title','—')}\n"
             f"Author: {m.get('/Author','—')}\n"
             f"Encrypted: {'Yes' if r.is_encrypted else 'No'}")
+
+def compress_pdf_to_kb(raw: bytes, target_kb: int) -> io.BytesIO:
+    """
+    Compress PDF pages and if still too large, re-render each page
+    as a JPEG image at decreasing quality until target_kb is reached.
+    """
+    # Step 1: stream compression (fast, lossless)
+    reader = PdfReader(io.BytesIO(raw))
+    writer = PdfWriter()
+    writer.append(reader)
+    for page in writer.pages:
+        try: page.compress_content_streams()
+        except: pass
+    buf = io.BytesIO(); writer.write(buf)
+    if buf.tell() <= target_kb * 1024:
+        buf.seek(0); return buf
+
+    # Step 2: re-render pages as compressed JPEG images (lossy but effective)
+    try:
+        from pdf2image import convert_from_bytes
+        quality = 85
+        while quality >= 20:
+            pages = convert_from_bytes(raw, dpi=120)
+            writer2 = PdfWriter()
+            for pg_img in pages:
+                tmp = io.BytesIO()
+                pg_img.save(tmp, "JPEG", quality=quality, optimize=True)
+                tmp.seek(0)
+                pdf_page = io.BytesIO(img2pdf.convert(tmp.read()))
+                writer2.append(PdfReader(pdf_page))
+            out = io.BytesIO(); writer2.write(out)
+            if out.tell() <= target_kb * 1024:
+                out.seek(0); return out
+            quality -= 15
+        out.seek(0); return out
+    except Exception:
+        buf.seek(0); return buf
 
 def extract_pdf_text(raw):
     if PLUMBER_OK:
