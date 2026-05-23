@@ -45,7 +45,6 @@ class UserStates:
     WAIT_PDF_WATERMARK    = "wait_pdf_watermark"
 
 def clear_waiting(context: ContextTypes.DEFAULT_TYPE):
-    """Resets all transient interaction flags safely."""
     context.user_data["current_state"] = None
 
 # ═══════════════════════════════════════════════════════════
@@ -53,7 +52,6 @@ def clear_waiting(context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════
 
 def compress_to_kb(img: Image.Image, target_kb: int) -> io.BytesIO:
-    """Compress image down to target KB using binary search on JPEG quality."""
     img = img.convert("RGB")
     lo, hi = 1, 95
     buf = io.BytesIO()
@@ -70,10 +68,8 @@ def compress_to_kb(img: Image.Image, target_kb: int) -> io.BytesIO:
 
 
 def increase_to_kb(img: Image.Image, target_kb: int) -> io.BytesIO:
-    """Increase image file size up to target KB via lossless dimension scaling."""
     img = img.convert("RGB")
     scale = 1.0
-    buf = io.BytesIO()
     for _ in range(20):
         w = int(img.width * scale)
         h = int(img.height * scale)
@@ -90,12 +86,10 @@ def increase_to_kb(img: Image.Image, target_kb: int) -> io.BytesIO:
 
 
 def apply_watermark(img: Image.Image, text: str, opacity: int = 128) -> Image.Image:
-    """Applies a clean, alpha-blended text watermark layer."""
     img = img.copy().convert("RGBA")
     txt_layer = Image.new("RGBA", img.size, (255, 255, 255, 0))
     draw = ImageDraw.Draw(txt_layer)
     
-    # Platform agnostic font discovery fallback loop
     font_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "C:\\Windows\\Fonts\\arial.ttf",
@@ -408,16 +402,12 @@ async def send_menu(chat_id, context, text="💎 *System Control Core*\nSelect e
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚡ *Advanced Processing Engine Online*\n\n"
-        "Deploy single or multiple workloads by forwarding directly:\n"
-        "📊 *Image Vector:* Automation scaling, targets compression, filters.\n"
-        "📄 *PDF Units:* Native compression, matrix merge/split, crypto lockers.\n"
-        "🎬 *Motion Frames:* Video clips to standalone high-speed GIFs.\n"
-        "🔗 *Stream URLs:* Deep-scraping downloads from Pinterest, Instagram, X.",
+        "Deploy workloads directly by forwarding assets to me.",
         parse_mode="Markdown"
     )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💡 *Interactive System Operations Guide:* Use standard runtime button interface matrices to process data blocks natively.", parse_mode="Markdown")
+    await update.message.reply_text("💡 *Interactive System Operations Guide:* Use the dashboard button systems to modify uploaded binary streams.", parse_mode="Markdown")
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("batch_mode"):
@@ -527,7 +517,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buf = increase_to_kb(img, kb)
             await context.bot.send_document(update.message.chat_id, buf, filename="upscaled_target.png", caption=f"✅ Lossless volume scaling finalized.")
         except Exception:
-            await update.message.reply_text("🚨 Parsing failure: Numeric variables are bounded between 1 and 100000.")
+            await update.message.reply_text("🚨 Parsing failure.")
         finally:
             clear_waiting(context)
         return
@@ -571,7 +561,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             clear_waiting(context)
         return
 
-    await update.message.reply_text("🚨 *Command pipeline parsing mismatch.* Invalid terminal command strings or sequence data structures.", parse_mode="Markdown")
+    await update.message.reply_text("🚨 *Command pipeline parsing mismatch.*", parse_mode="Markdown")
 
 # ═══════════════════════════════════════════════════════════
 #  INTERACTIVE TELEMETRY QUERY HANDLERS (CALLBACK DISPATCHER)
@@ -585,7 +575,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = context.user_data.get("file_id")
     pdf_id  = context.user_data.get("pdf_file_id")
 
-    # Navigation Context Map
     nav = {
         "menu_main":      ("💎 *Main Matrix Controller*", build_main_menu()),
         "menu_convert":   ("🔄 *Format Conversion Control*", build_convert_menu()),
@@ -637,12 +626,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if d == "do_pdf_merge_start":
         context.user_data["current_state"] = UserStates.WAIT_PDF_MERGE
         context.user_data["pdf_merge_list"] = []
-        await q.edit_message_text("🔗 *Batch Pipeline Active:* Supply sequence materials sequentially. Conclude execution by providing `done` argument string.")
+        await q.edit_message_text("🔗 *Batch Pipeline Active:* Supply sequence materials sequentially. Type `done` when finished.")
         return
 
     if d == "do_info":
         if not file_id:
-            await q.edit_message_text("🚨 Volatile allocation block unallocated. Supply a target baseline file first.")
+            await q.edit_message_text("🚨 Volatile allocation block unallocated.")
             return
         img = await get_image(context, file_id)
         await q.edit_message_text(get_image_info(img), parse_mode="Markdown", reply_markup=build_main_menu())
@@ -650,13 +639,32 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if d == "do_pdf_info":
         if not pdf_id:
-            await q.edit_message_text("🚨 Structural mapping context empty. Pass active document pointer first.")
+            await q.edit_message_text("🚨 Structural mapping context empty.")
             return
         raw_pdf = await get_bytes(context, pdf_id)
         await q.edit_message_text(pdf_info_text(raw_pdf), parse_mode="Markdown", reply_markup=build_pdf_menu())
         return
 
-    # Image Transform Process Actions Execution Branch Block
+    if d == "do_convert_PDF2JPG":
+        target_id = pdf_id or file_id
+        if not target_id:
+            await q.edit_message_text("❌ Missing PDF allocation block context.")
+            return
+        await q.edit_message_text("⏳ *Bursting PDF matrix arrays into discrete JPEG files...*")
+        try:
+            from pdf2image import convert_from_bytes
+            raw = await get_bytes(context, target_id)
+            pages = convert_from_bytes(bytes(raw), dpi=150)
+            for i, page in enumerate(pages, 1):
+                buf = io.BytesIO()
+                page.save(buf, format="JPEG", quality=90)
+                buf.seek(0)
+                await context.bot.send_document(chat_id, buf, filename=f"page_{i}.jpg")
+            await send_menu(chat_id, context)
+        except Exception as e:
+            await context.bot.send_message(chat_id, f"🚨 System pipeline exception: {str(e)[:100]}")
+        return
+
     if d.startswith("do_effect_") and file_id:
         effect = d[len("do_effect_"):]
         await q.edit_message_text("⚡ *Recalculating color channel matrices...*")
@@ -689,17 +697,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_menu(chat_id, context)
         return
 
-    # Direct Compress Value Presets Resolver
     if d.startswith("do_compress_") and file_id:
         kb = int(d.split("_")[-1])
-        await q.edit_message_text(f"⏳ *Executing compression down to target boundary threshold:* {kb} KB...")
+        await q.edit_message_text(f"⏳ *Executing compression down to target threshold:* {kb} KB...")
         img = await get_image(context, file_id)
         buf = compress_to_kb(img, kb)
         await context.bot.send_document(chat_id, buf, filename=f"compressed_{kb}kb.jpg", caption=f"✅ Downscaling complete.")
         await send_menu(chat_id, context)
         return
 
-    # Conversions Resolver Core
     if d.startswith("do_convert_") and file_id:
         fmt = d.split("_")[-1]
         await q.edit_message_text(f"⏳ *Recompiling raw image bitstream to extension target:* {fmt}...")
@@ -717,11 +723,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             img.save(buf, format=fmt)
         buf.seek(0)
-        await context.bot.send_document(chat_id, buf, filename=f"converted.{fmt.lower()}", caption=f"✅ Transcoding process pipeline clean.")
+        await context.bot.send_document(chat_id, buf, filename=f"converted.{fmt.lower()}", caption=f"✅ Transcoding clean.")
         await send_menu(chat_id, context)
         return
 
-    await q.edit_message_text("🚨 *Runtime Execution Aborted:* System command routing vector was contextually invalid or missing initial object allocations.", reply_markup=build_main_menu())
+    await q.edit_message_text("🚨 *Runtime Execution Aborted.*", reply_markup=build_main_menu())
 
 # ═══════════════════════════════════════════════════════════
 #  APPLICATION INSTANTIATION ENTRY POINT
@@ -729,9 +735,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     os.makedirs("downloads", exist_ok=True)
-    if not TOKEN:
-        raise RuntimeError("🚨 Fatal Configuration Error: Application token string variable key missing from environmental path.")
-        
     app = ApplicationBuilder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
