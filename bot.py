@@ -15,7 +15,7 @@ from pypdf import PdfReader, PdfWriter
 TOKEN = os.environ.get("TOKEN")
 MAX_BATCH = 10
 
-# ── Optional libs ─────────────────────────────────────────
+# ── Optional libs ────────────────────────────────────
 try:
     import qrcode; QR_OK = True
 except ImportError:
